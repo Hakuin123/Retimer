@@ -1,0 +1,43 @@
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- Android 14 起用户可以只授权「选择的照片」，反查这些媒体同样需要它。 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!--
+        同步文件修改时间需要直接写共享存储里的文件，只能由用户在系统设置里单独开启。
+
+        这个权限受 Google Play 的商店政策限制（ScopedStorage 提示）：它只在本应用的主功能
+        「把文件在存储里的时间戳改成用户指定的时间」上使用，不是用来访问与功能无关的文件，
+        申请前也会先把用途和不开启的后果告诉用户。这里的提示属于政策提醒，不是代码缺陷，
+        所以明确忽略掉；如果以后要上架 Play，需要按政策提交对应的用途声明。
+    -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <application
+        android:name=".MediaTimeFixerApplication"
+        android:allowBackup="true"
+        android:label="Retimer"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.MediaTimeFixer">
+        <!--
+            旋转屏幕（以及其他会改变尺寸的配置变化）时重建 Activity 会丢掉界面状态：
+            整块界面都是 Compose，已选媒体、修正候选、流程阶段都放在各自的 remember 里，
+            Activity 一重建就全没了（选择媒体后转屏会看到选择被清空）。
+            这里声明由 Activity 自己消化这些配置变化，Compose 会按新配置重新排版，状态保持不动。
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
