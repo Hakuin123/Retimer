@@ -59,6 +59,7 @@ import dev.hk256.retimer.core.FilenameDateParser
 import dev.hk256.retimer.core.MediaItem
 import dev.hk256.retimer.data.FilenameRuleState
 import dev.hk256.retimer.data.UserPreferences
+import dev.hk256.retimer.data.editZoneOf
 import dev.hk256.retimer.media.MediaMetadataReader
 import dev.hk256.retimer.media.MediaStoreRepository
 import dev.hk256.retimer.media.MediaStoreUris
@@ -134,12 +135,14 @@ internal fun RepairMediaPage(
     val context = LocalContext.current
     val repository = remember { MediaStoreRepository(context.contentResolver) }
     val mediaStoreUris = remember { MediaStoreUris(context) }
-    val metadataReader = remember { MediaMetadataReader(context.contentResolver) }
-    val parser = remember { FilenameDateParser() }
-    val zoneId = remember { ZoneId.systemDefault() }
-    val scope = rememberCoroutineScope()
     val preferences = remember { UserPreferences(context) }
+    // 墙上时钟的解释时区：设置里选了固定偏移就用它，否则跟随设备。
+    // 文件名里的时间、EXIF 里没写偏移的时间都按它解释。
+    val zoneId = remember(preferences.editZoneOffsetSeconds) { editZoneOf(preferences.editZoneOffsetSeconds) }
+    val metadataReader = remember(zoneId) { MediaMetadataReader(context.contentResolver, zoneId) }
+    val parser = remember(zoneId) { FilenameDateParser(zoneId) }
     val writer = rememberMediaWriteController(repository, mediaStoreUris, zoneId, preferences)
+    val scope = rememberCoroutineScope()
     var source by remember { mutableStateOf(RepairSource.METADATA) }
     /** 「覆盖已存在的日期字段」记得用户上次的选择。 */
     var overwrite by remember { mutableStateOf(preferences.overwriteExistingDateFields) }

@@ -5,18 +5,22 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Label
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -30,13 +34,19 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
@@ -50,6 +60,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.hk256.retimer.BuildConfig
 import dev.hk256.retimer.data.AppLanguage
@@ -63,6 +74,7 @@ import dev.hk256.retimer.ui.components.SectionCardCorner
 import dev.hk256.retimer.ui.theme.AppDarkColorScheme
 import dev.hk256.retimer.ui.theme.AppLightColorScheme
 import dev.hk256.retimer.ui.theme.AppTypeScale
+import kotlin.math.abs
 
 private const val GITHUB_PROJECT_URL = "https://github.com/Hakuin123/Retimer"
 private const val GITHUB_PROFILE_URL = "https://github.com/Hakuin123"
@@ -166,6 +178,18 @@ internal fun SettingsPage(
             }
         }
         item { Spacer(Modifier.height(24.dp)) }
+        item { SettingsSectionTitle("时间") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                EditZoneSettingItem(
+                    index = 0,
+                    count = 1,
+                    selected = settings.editZoneOffsetSeconds,
+                    onSelect = settings::updateEditZoneOffsetSeconds,
+                )
+            }
+        }
+        item { Spacer(Modifier.height(24.dp)) }
         item { SettingsSectionTitle("关于") }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -228,6 +252,186 @@ private fun SettingsSectionTitle(title: String) {
         modifier = Modifier.padding(start = SectionCardCorner, bottom = 8.dp),
     )
 }
+
+/** 「编辑时间使用的时区」设置项：点开对话框选择，避免在设置列表里展开四十几个偏移选项。 */
+@Composable
+private fun EditZoneSettingItem(
+    index: Int,
+    count: Int,
+    selected: Int?,
+    onSelect: (Int?) -> Unit,
+) {
+    var dialogOpen by remember { mutableStateOf(false) }
+    ExpressiveListItem(
+        index = index,
+        count = count,
+        icon = Icons.Rounded.Public,
+        headline = "编辑时间使用的时区",
+        supporting = editZoneOptionLabel(selected),
+        onClick = { dialogOpen = true },
+    )
+    if (dialogOpen) {
+        EditZoneDialog(
+            selected = selected,
+            onDismiss = { dialogOpen = false },
+            onSelect = {
+                dialogOpen = false
+                onSelect(it)
+            },
+        )
+    }
+}
+
+/**
+ * 选「编辑时间使用的时区」的对话框。
+ *
+ * 现实在用的 UTC 偏移有四十多个（整点之外还有 +05:30、+05:45、-03:30 这些），全列出来太难翻，
+ * 这里改成直接填：符号 + 小时 + 分钟。分钟只收 15 的倍数（现实与近代历史时区都按 15 分钟取整），
+ * 范围 -12:00…+14:00。固定偏移不带夏令时规则——相机时钟也没有，它只是被调到某个偏移；
+ * 夏令时期间拍的照片，填夏令时用的那个偏移即可。
+ */
+@Composable
+private fun EditZoneDialog(
+    selected: Int?,
+    onDismiss: () -> Unit,
+    onSelect: (Int?) -> Unit,
+) {
+    var followDevice by remember { mutableStateOf(selected == null) }
+    var negative by remember { mutableStateOf((selected ?: 0) < 0) }
+    var hourText by remember {
+        mutableStateOf((abs(selected ?: 0) / 3600).toString().padStart(2, '0'))
+    }
+    var minuteText by remember {
+        mutableStateOf((abs(selected ?: 0) / 60 % 60).toString().padStart(2, '0'))
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑时间使用的时区", style = AppTypeScale.dialogTitle) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                ZoneChoiceRow(
+                    text = "跟随设备时区",
+                    selected = followDevice,
+                    onClick = {
+                        followDevice = true
+                        error = null
+                    },
+                )
+                ZoneChoiceRow(
+                    text = "固定偏移",
+                    selected = !followDevice,
+                    onClick = { followDevice = false },
+                )
+                if (!followDevice) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        OutlinedButton(onClick = { negative = !negative }) {
+                            Text(if (negative) "UTC-" else "UTC+")
+                        }
+                        OutlinedTextField(
+                            value = hourText,
+                            onValueChange = {
+                                hourText = it.filter(Char::isDigit).take(2)
+                                error = null
+                            },
+                            label = { Text("时") },
+                            singleLine = true,
+                            textStyle = dialogInputTextStyle(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(":", style = MaterialTheme.typography.titleLarge)
+                        OutlinedTextField(
+                            value = minuteText,
+                            onValueChange = {
+                                minuteText = it.filter(Char::isDigit).take(2)
+                                error = null
+                            },
+                            label = { Text("分") },
+                            singleLine = true,
+                            textStyle = dialogInputTextStyle(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+                error?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (followDevice) {
+                        onSelect(null)
+                        return@TextButton
+                    }
+                    val hour = hourText.toIntOrNull()
+                    val minute = minuteText.toIntOrNull()
+                    when {
+                        hour == null || hour !in 0..14 -> error = "小时需在 0~14 之间"
+                        minute == null || minute !in 0..59 || minute % 15 != 0 ->
+                            error = "分钟需为 00、15、30 或 45"
+                        !negative && hour * 60 + minute > 14 * 60 -> error = "最晚为 UTC+14:00"
+                        negative && hour * 60 + minute > 12 * 60 -> error = "最早为 UTC-12:00"
+                        else -> {
+                            val totalSeconds = hour * 3600 + minute * 60
+                            onSelect(if (negative) -totalSeconds else totalSeconds)
+                        }
+                    }
+                },
+            ) {
+                Text("确定", style = MaterialTheme.typography.labelLarge)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", style = MaterialTheme.typography.labelLarge) }
+        },
+    )
+}
+
+/** 对话框里的一个单选行：整行可点，前面一个单选钮。 */
+@Composable
+private fun ZoneChoiceRow(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.small)
+                .clickable(onClick = onClick),
+    ) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** 时区选项的显示文字：跟随设备，或写成 `UTC+09:00` 这样的固定偏移。 */
+private fun editZoneOptionLabel(offsetSeconds: Int?): String =
+    when (offsetSeconds) {
+        null -> "跟随设备时区"
+        0 -> "UTC"
+        else -> {
+            val sign = if (offsetSeconds > 0) "+" else "-"
+            val minutes = abs(offsetSeconds) / 60
+            val hours = minutes / 60
+            val restMinutes = minutes % 60
+            "UTC$sign${hours.toString().padStart(2, '0')}:${restMinutes.toString().padStart(2, '0')}"
+        }
+    }
 
 @Composable
 private fun <T> DropdownSettingItem(

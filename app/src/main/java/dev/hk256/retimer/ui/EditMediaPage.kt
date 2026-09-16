@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import dev.hk256.retimer.core.MediaItem
 import dev.hk256.retimer.core.TimeTransform
 import dev.hk256.retimer.data.UserPreferences
+import dev.hk256.retimer.data.editZoneOf
 import dev.hk256.retimer.media.MediaMetadataReader
 import dev.hk256.retimer.media.MediaStoreRepository
 import dev.hk256.retimer.media.MediaStoreUris
@@ -219,9 +220,10 @@ internal fun EditMediaPage(
     val context = LocalContext.current
     val repository = remember { MediaStoreRepository(context.contentResolver) }
     val mediaStoreUris = remember { MediaStoreUris(context) }
-    val metadataReader = remember { MediaMetadataReader(context.contentResolver) }
-    val zoneId = remember { ZoneId.systemDefault() }
     val preferences = remember { UserPreferences(context) }
+    // 墙上时钟的解释时区：设置里选了固定偏移就用它，否则跟随设备。
+    val zoneId = remember(preferences.editZoneOffsetSeconds) { editZoneOf(preferences.editZoneOffsetSeconds) }
+    val metadataReader = remember(zoneId) { MediaMetadataReader(context.contentResolver, zoneId) }
     val writer = rememberMediaWriteController(repository, mediaStoreUris, zoneId, preferences)
     var media by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
     /** 文件里读到的日期：用来判断"文件里已存在的日期字段"和显示「当前」。 */

@@ -22,7 +22,8 @@ class ExifImageDateWriter(
     private val zoneId: ZoneId = ZoneId.systemDefault(),
 ) : MediaDateWriter {
     private val exifFormatter = DateTimeFormatter.ofPattern("yyyy:MM:dd HH:mm:ss", Locale.US)
-    private val offsetFormatter = DateTimeFormatter.ofPattern("XXX", Locale.US)
+    // 小写 x：零偏移写成 "+00:00" 而不是 "Z"——EXIF 规范写作 ±HH:MM，有的第三方读取器不认 "Z"。
+    private val offsetFormatter = DateTimeFormatter.ofPattern("xxx", Locale.US)
 
     override suspend fun write(
         item: MediaItem,
@@ -35,6 +36,8 @@ class ExifImageDateWriter(
         return try {
             val localTarget = target.atZone(zoneId)
             val date = exifFormatter.format(localTarget)
+            // 偏移跟着解释时区一起写：之后（包括本应用自己）再读时按它还原真实时刻，
+            // 不再依赖读取设备的时区。
             val offset = offsetFormatter.format(localTarget)
             contentResolver.openFileDescriptor(uri, "rw")?.use { descriptor ->
                 val exif = ExifInterface(descriptor.fileDescriptor)

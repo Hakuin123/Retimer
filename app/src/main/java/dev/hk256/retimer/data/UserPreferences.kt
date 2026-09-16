@@ -10,6 +10,8 @@ import dev.hk256.retimer.core.FilenameRule
 import dev.hk256.retimer.core.FilenameRuleSettings
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /** 应用主题模式。 */
 enum class AppThemeMode {
@@ -91,6 +93,28 @@ class UserPreferences(context: Context) {
                 putString(KEY_FILENAME_RULE_SETTINGS, encodeFilenameRuleSettings(value))
             }
 
+    /**
+     * 编辑与解释媒体时间时用的固定时区（相对 UTC 的秒数）。
+     *
+     * null 表示跟随设备时区。墙上时钟的换算（读文件名、显示、写入 EXIF 的偏移）都按它来，
+     * 给跨时区整理照片一个不随设备漂移的解释基准。
+     */
+    var editZoneOffsetSeconds: Int?
+        get() =
+            if (preferences.contains(KEY_EDIT_ZONE_OFFSET_SECONDS)) {
+                preferences.getInt(KEY_EDIT_ZONE_OFFSET_SECONDS, 0)
+                    .takeIf { it in MIN_ZONE_OFFSET_SECONDS..MAX_ZONE_OFFSET_SECONDS }
+            } else {
+                null
+            }
+        set(value) {
+            if (value == null) {
+                preferences.edit { remove(KEY_EDIT_ZONE_OFFSET_SECONDS) }
+            } else {
+                preferences.edit { putInt(KEY_EDIT_ZONE_OFFSET_SECONDS, value) }
+            }
+        }
+
     private companion object {
         const val PREFERENCES_NAME = "media_time_fixer"
         const val KEY_SYNC_FILE_MODIFIED_TIME = "advanced.sync_file_modified_time"
@@ -100,6 +124,12 @@ class UserPreferences(context: Context) {
         const val KEY_LANGUAGE = "appearance.language"
         const val KEY_HIDE_UNSELECTED_NAV_LABELS = "appearance.hide_unselected_nav_labels"
         const val KEY_FILENAME_RULE_SETTINGS = "filename.rule_settings"
+        const val KEY_EDIT_ZONE_OFFSET_SECONDS = "timezone.edit_zone_offset_seconds"
+
+        // ZoneOffset 允许的范围是 ±18 小时；界面上可填 −12:00…+14:00 内 15 分钟倍数的偏移，
+        // 存盘值超界按未设置处理。
+        const val MIN_ZONE_OFFSET_SECONDS = -18 * 60 * 60
+        const val MAX_ZONE_OFFSET_SECONDS = 18 * 60 * 60
     }
 }
 
@@ -165,6 +195,10 @@ private fun decodeFilenameRuleSettings(stored: String?): FilenameRuleSettings {
     }.getOrElse { FilenameRuleSettings() }
 }
 
+/** 固定偏移换算成时区；未设置（null）时跟随设备时区。 */
+fun editZoneOf(offsetSeconds: Int?): ZoneId =
+    offsetSeconds?.let(ZoneOffset::ofTotalSeconds) ?: ZoneId.systemDefault()
+
 /**
  * 应用级偏好状态。
  *
@@ -188,6 +222,9 @@ class AppSettingsState(preferences: UserPreferences) {
     var hideUnselectedNavLabels by mutableStateOf(preferences.hideUnselectedNavLabels)
         private set
 
+    var editZoneOffsetSeconds by mutableStateOf(preferences.editZoneOffsetSeconds)
+        private set
+
     fun updateThemeMode(value: AppThemeMode) {
         themeMode = value
         preferences.themeMode = value
@@ -206,6 +243,11 @@ class AppSettingsState(preferences: UserPreferences) {
     fun updateHideUnselectedNavLabels(value: Boolean) {
         hideUnselectedNavLabels = value
         preferences.hideUnselectedNavLabels = value
+    }
+
+    fun updateEditZoneOffsetSeconds(value: Int?) {
+        editZoneOffsetSeconds = value
+        preferences.editZoneOffsetSeconds = value
     }
 }
 
